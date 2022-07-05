@@ -345,21 +345,20 @@ void rec_video() {
 
 
         //（宽 x 高）x (yuv420=1.5/yuv422=2/yuv444=3)
-        fwrite(pkt.data, 1, 460800, outfile);
-        fflush(outfile);
-        av_packet_unref(&pkt); //release pkt
+//        fwrite(pkt.data, 1, 460800, outfile);
+//        fflush(outfile);
 
         //YYYYYYYYUVUV NV12
         //YYYYYYYYUUVV YUV420
+
         // 先复制Y数据
         memcpy(frame->data[0], pkt.data, 307200);  //640 * 480 = 307200
 
-
         // 再复制307200之后的UV数据
-        for(i=0; i<307200/4; i++){  // 因为U或者V,都只占Y的1/4
+        for(int j=0; j<307200/4; j++){  // 因为U或者V,都只占Y的1/4
             // 复制
-            frame ->data[1][i] = pkt.data[307200 + i*2];
-            frame ->data[2][i] = pkt.data[307200 + i*2 + 1];
+            frame ->data[1][j] = pkt.data[307200 + j*2];
+            frame ->data[2][j] = pkt.data[307200 + j*2 + 1];
         }
 
         // 再将数据写入文件
@@ -367,6 +366,7 @@ void rec_video() {
         fwrite(frame->data[1], 1, 307200/4, outfile);
         fwrite(frame->data[2], 1, 307200/4, outfile);
 
+        av_packet_unref(&pkt); //release pkt
     }
 
 
