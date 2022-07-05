@@ -9,6 +9,9 @@
 #include "testc.h"
 #include <string.h>
 
+#define V_WIDTH 640
+#define V_HEIGHT 480
+
 static int rec_status = 0;
 
 void set_status(int status) {
@@ -81,8 +84,8 @@ static void open_encoder2(AVFormatContext *fmt_ctx,
 //    (*enc_ctx)->qcompress = 0.0;
 
     /* resolution must be a multiple of two */
-    (*enc_ctx)->width = 640; //不能改变分辩率大小
-    (*enc_ctx)->height = 480;
+    (*enc_ctx)->width = V_WIDTH; //不能改变分辩率大小
+    (*enc_ctx)->height = V_HEIGHT;
     /* frames per second */
     (*enc_ctx)->time_base = (AVRational) {1, 25}; //抓取的数据与编码可以不一样
     (*enc_ctx)->framerate = (AVRational) {25, 1};
@@ -167,7 +170,7 @@ static void encode(AVCodecContext *enc_ctx,
  * @return xxx
  */
 static
-AVFrame *create_frame(int width, int height) {
+AVFrame *create_frame2(int width, int height) {
 
     int ret = -1;
     AVFrame *frame = NULL;
@@ -201,6 +204,44 @@ AVFrame *create_frame(int width, int height) {
 
     return NULL;
 }
+
+
+static
+AVFrame* create_frame(int width, int height){
+
+    int ret = 0;
+    // 1. 先造一个frame的壳子
+    AVFrame* frame = NULL;
+    frame = av_frame_alloc();
+
+    if(!frame){
+        printf("Error, No Memory!");
+        goto __ERROR;
+    }
+
+    // 2. 设置壳子的参数
+    frame->width = width;
+    frame->height = height;
+    frame->format = AV_PIX_FMT_YUV420P;
+
+    // 3. 为壳子分配内存
+    ret = av_frame_get_buffer(frame, 32);
+    if(ret < 0){
+        printf("Error, Failed to alloc buffer for frame!");
+        goto __ERROR;
+    }
+
+    return frame;
+
+    // 做了一个error标记
+    __ERROR:
+    if(frame){
+        av_frame_free(frame);
+    }
+
+    return NULL;
+}
+
 
 static void open_encoder(int width, int height, AVCodecContext **enc_ctx) {
     AVCodec *codec = NULL;
@@ -283,11 +324,10 @@ void rec_video() {
     //打开设备
     fmt_ctx = open_dev();
 
-    open_encoder(640, 480, &enc_ctx);
-
+    open_encoder(V_WIDTH, V_HEIGHT, &enc_ctx);
 
     //创建frame
-//    frame = create_frame(640, 480);
+    frame = create_frame(V_WIDTH, V_HEIGHT);
 
     newpkt = av_packet_alloc(); //分配编码后的数据空间
     if (!newpkt) {
@@ -308,6 +348,25 @@ void rec_video() {
         fwrite(pkt.data, 1, 460800, outfile);
         fflush(outfile);
         av_packet_unref(&pkt); //release pkt
+
+        //YYYYYYYYUVUV NV12
+        //YYYYYYYYUUVV YUV420
+        // 先复制Y数据
+        memcpy(frame->data[0], pkt.data, 307200);  //640 * 480 = 307200
+
+
+        // 再复制307200之后的UV数据
+        for(i=0; i<307200/4; i++){  // 因为U或者V,都只占Y的1/4
+            // 复制
+            frame ->data[1][i] = pkt.data[307200 + i*2];
+            frame ->data[2][i] = pkt.data[307200 + i*2 + 1];
+        }
+
+        // 再将数据写入文件
+        fwrite(frame->data[0], 1, 307200, outfile);
+        fwrite(frame->data[1], 1, 307200/4, outfile);
+        fwrite(frame->data[2], 1, 307200/4, outfile);
+
     }
 
 
