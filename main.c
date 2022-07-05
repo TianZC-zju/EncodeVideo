@@ -133,7 +133,7 @@ static void open_encoder2(AVFormatContext *fmt_ctx,
     }
 }
 
-static void encode(AVCodecContext *enc_ctx,
+static void encode2(AVCodecContext *enc_ctx,
                    AVFrame *frame,
                    AVPacket *pkt,
                    FILE *outfile) {
@@ -163,6 +163,48 @@ static void encode(AVCodecContext *enc_ctx,
         fwrite(pkt->data, 1, pkt->size, outfile);
         av_packet_unref(pkt);
     }
+}
+
+static void encode(
+        AVCodecContext *enc_ctx,
+        AVFrame *frame,
+        AVPacket *pkt,
+        FILE *outfile){
+    if(!enc_ctx){
+
+    }
+
+    if(frame){
+        printf("send frame to encoder, pts=%lld", frame->pts);
+    }
+
+    int ret = 0;
+
+    // 将原始数据送入编码器
+    ret = avcodec_send_frame(enc_ctx, frame);
+    if(ret < 0){
+        printf("Error, failed send frame for encoding\n");
+        exit(1);
+    }
+
+    // 从编码器中获取编码好的数据
+    while(ret >= 0){
+        ret = avcodec_receive_packet(enc_ctx, pkt);
+
+        // 如果编码数据不足会返回 EAGAIN , 或者到数据尾会返回 AVERROR_EOF
+        if(ret == AVERROR(EAGAIN) || ret == AVERROR_EOF){
+            return;
+        }else if(ret<0){
+            printf("Error, Failed to encode!\n");
+            exit(1);
+        }
+
+        fwrite(pkt->data, 1, pkt->size,outfile);
+        av_packet_unref(pkt);
+    }
+
+    // 将编码器中所有的数据掏空
+    encode(enc_ctx, NULL, pkt, outfile);
 }
 
 /**
@@ -317,9 +359,10 @@ void rec_video() {
     rec_status = 1;
 
     //create file
-    char *out = "/Users/tianzc/video.yuv";
-//    char *out = "/Users/lichao/Downloads/av_base/video.h264";
-    FILE *outfile = fopen(out, "wb+");
+//    char *outYuv = "/Users/tianzc/video.yuv";
+    char *outH264 = "/Users/tianzc/video.h264";
+    FILE *outfile= fopen(outH264, "wb+");
+//    FILE *outfileH264 = fopen(outH264, "wb+");
 
     //打开设备
     fmt_ctx = open_dev();
@@ -362,11 +405,15 @@ void rec_video() {
         }
 
         // 再将数据写入文件
-        fwrite(frame->data[0], 1, 307200, outfile);
-        fwrite(frame->data[1], 1, 307200/4, outfile);
-        fwrite(frame->data[2], 1, 307200/4, outfile);
+//        fwrite(frame->data[0], 1, 307200, outfile);
+//        fwrite(frame->data[1], 1, 307200/4, outfile);
+//        fwrite(frame->data[2], 1, 307200/4, outfile);
 
-        av_packet_unref(&pkt); //release pkt
+        frame->pts = base++;
+
+        encode(enc_ctx, frame, newpkt, outfile);
+
+//        av_packet_unref(&pkt); //release pkt
     }
 
 
